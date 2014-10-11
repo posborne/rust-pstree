@@ -31,37 +31,53 @@ use std::io::fs::PathExtensions;
 use std::io::fs;
 use std::io::File;
 use std::io::BufferedReader;
-use std::collections::hashmap::HashMap;
+use std::fmt;
 
-fn process_status_file(status_path: &Path) {
+struct ProcessRecord {
+    name: String,
+    pid: int,
+    ppid: int
+}
+
+impl fmt::Show for ProcessRecord {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "ProcessRecord [ name: {}, pid: {}, ppid: {} )",
+               self.name,
+               self.pid,
+               self.ppid)
+    }
+}
+
+// Given a status file path, return a hashmap with the following form:
+// pid -> ProcessRecord
+fn get_status_info(status_path: &Path) -> Option<ProcessRecord> {
+    let mut pid : Option<int> = None;
+    let mut ppid : Option<int> = None;
+    let mut name : Option<String> = None;
+
     let mut status_file = BufferedReader::new(File::open(status_path));
-    let mut status_data = HashMap::new();
     for line in status_file.lines() {
-        let linetext = match line {
-            Err(why) => fail!("{}", why.desc),
-            Ok(l) => l
-        };
-        let parts: Vec<&str> = linetext.as_slice().splitn(2, ':').collect();
+        let unwrapped = line.unwrap(); // need a new lifeline
+        let parts : Vec<&str> = unwrapped.as_slice().splitn(2, ':').collect();
         if parts.len() == 2 {
             let key = parts[0].trim();
             let value = parts[1].trim();
-            status_data.insert(key.to_string(), value.to_string());
-        };
+            match key {
+                "Name" => name = Some(value.to_string()),
+                "Pid" => pid = from_str(value),
+                "PPid" => ppid = from_str(value),
+                _ => (),
+            }
+        }
     }
 
-    let name_key = &("Name".to_string());
-    let pid_key = &("Pid".to_string());
-    let ppid_key = &("PPid".to_string());
-
-    if status_data.contains_key(name_key) &&
-        status_data.contains_key(pid_key) &&
-        status_data.contains_key(ppid_key) {
-            println!("{}#{} -> {}",
-                     status_data.get(name_key),
-                     status_data.get(pid_key),
-                     status_data.get(ppid_key));
-        }
+    return if pid.is_some() && ppid.is_some() && name.is_some() {
+        Some(ProcessRecord { name: name.unwrap(), pid: pid.unwrap(), ppid: ppid.unwrap() })
+    } else {
+        None
+    }
 }
+
 
 fn dump_process_info() {
     let proc_directory = Path::new("/proc");
@@ -73,7 +89,11 @@ fn dump_process_info() {
         if entry.is_dir() {
             let status_path = entry.join("status");
             if status_path.exists() {
-                process_status_file(&status_path);
+                let record = get_status_info(&status_path);
+                match record {
+                    Some(record) => println!("{}", record),
+                    None => ()
+                }
             }
         }
     }
