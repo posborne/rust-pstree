@@ -31,26 +31,36 @@ use std::io::fs::PathExtensions;
 use std::io::fs;
 use std::io::File;
 use std::io::BufferedReader;
-use std::fmt;
 
+#[deriving(Clone,Show)]
 struct ProcessRecord {
     name: String,
     pid: int,
     ppid: int
 }
 
-impl fmt::Show for ProcessRecord {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "ProcessRecord [ name: {}, pid: {}, ppid: {} )",
-               self.name,
-               self.pid,
-               self.ppid)
+#[deriving(Clone,Show)]
+struct ProcessTreeNode {
+    record: ProcessRecord,  // the node owns the associated record
+    children: Vec<ProcessTreeNode>, // nodes own their children
+}
+
+#[deriving(Clone,Show)]
+struct ProcessTree {
+    root: ProcessTreeNode, // tree owns ref to root node
+}
+
+impl ProcessTreeNode {
+    // constructor
+    fn new(record : &ProcessRecord) -> ProcessTreeNode {
+        ProcessTreeNode { record: (*record).clone(), children: Vec::new() }
     }
 }
 
+
 // Given a status file path, return a hashmap with the following form:
 // pid -> ProcessRecord
-fn get_status_info(status_path: &Path) -> Option<ProcessRecord> {
+fn get_process_record(status_path: &Path) -> Option<ProcessRecord> {
     let mut pid : Option<int> = None;
     let mut ppid : Option<int> = None;
     let mut name : Option<String> = None;
@@ -79,26 +89,66 @@ fn get_status_info(status_path: &Path) -> Option<ProcessRecord> {
 }
 
 
-fn dump_process_info() {
+// build a simple struct (ProcessRecord) for each process
+fn get_process_records() -> Vec<ProcessRecord> {
+    let mut records : Vec<ProcessRecord> = Vec::new();
     let proc_directory = Path::new("/proc");
+
+    // find potential process directories under /proc
     let proc_directory_contents = match fs::readdir(&proc_directory) {
         Err(why) => fail!("{}", why.desc),
         Ok(res) => res
     };
-    for entry in proc_directory_contents.iter() {
-        if entry.is_dir() {
-            let status_path = entry.join("status");
-            if status_path.exists() {
-                let record = get_status_info(&status_path);
-                match record {
-                    Some(record) => println!("{}", record),
-                    None => ()
-                }
+
+    for entry in proc_directory_contents.iter().filter(|entry| entry.is_dir()) {
+        let status_path = entry.join("status");
+        if status_path.exists() {
+            match get_process_record(&status_path) {
+                Some(record) => records.push(record),
+                None => (),
             }
         }
+    }
+    records
+}
+
+fn populate_node(node : &mut ProcessTreeNode, records: &Vec<ProcessRecord>) {
+    // populate the node by finding its children... recursively
+    let pid = node.record.pid; // avoid binding node as immutable in closure
+    for record in records.iter().filter(|record| record.ppid == pid) {
+        let mut child = ProcessTreeNode::new(record);
+        populate_node(&mut child, records);
+        node.children.push(child);
+    }
+}
+
+fn build_process_tree() -> ProcessTree {
+    let records = get_process_records();
+    let mut tree = ProcessTree {
+        root : ProcessTreeNode::new(
+            &ProcessRecord { name: "/".to_string(), pid: 0, ppid: -1 })
+    };
+
+    // recursively populate all nodes in the tree starting from root (pid 0)
+    {
+        let root = &mut tree.root;
+        populate_node(root, &records);
+    }
+    tree
+}
+
+fn print_node(node : &ProcessTreeNode, indent_level : int) {
+    // print indentation
+    for _ in range(0, indent_level * 2) {
+        print!(" ");
+    }
+    println!("- {} #{}", node.record.name, node.record.pid);
+    for child in node.children.iter() {
+        print_node(child, indent_level + 1);  // recurse
     }
 }
 
 fn main() {
-    dump_process_info();
+    let ptree = build_process_tree();
+    print_node(&(ptree.root), 0)
 }
