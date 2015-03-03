@@ -27,25 +27,29 @@
 // of different items, notably the process name and its parent process id (ppid).
 // And with that information, we can build the process tree.
 
-use std::io::fs::PathExtensions;
-use std::io::fs;
-use std::io::File;
-use std::io::BufferedReader;
+#![feature(old_io)]
+#![feature(old_path)]
 
-#[deriving(Clone,Show)]
+use std::old_io::fs::PathExtensions;
+use std::old_io::fs;
+use std::old_io::File;
+use std::old_io::BufferedReader;
+
+
+#[derive(Clone,Debug)]
 struct ProcessRecord {
     name: String,
-    pid: int,
-    ppid: int
+    pid: isize,
+    ppid: isize,
 }
 
-#[deriving(Clone,Show)]
+#[derive(Clone,Debug)]
 struct ProcessTreeNode {
     record: ProcessRecord,  // the node owns the associated record
     children: Vec<ProcessTreeNode>, // nodes own their children
 }
 
-#[deriving(Clone,Show)]
+#[derive(Clone,Debug)]
 struct ProcessTree {
     root: ProcessTreeNode, // tree owns ref to root node
 }
@@ -61,21 +65,21 @@ impl ProcessTreeNode {
 // Given a status file path, return a hashmap with the following form:
 // pid -> ProcessRecord
 fn get_process_record(status_path: &Path) -> Option<ProcessRecord> {
-    let mut pid : Option<int> = None;
-    let mut ppid : Option<int> = None;
+    let mut pid : Option<isize> = None;
+    let mut ppid : Option<isize> = None;
     let mut name : Option<String> = None;
 
     let mut status_file = BufferedReader::new(File::open(status_path));
     for line in status_file.lines() {
         let unwrapped = line.unwrap(); // need a new lifeline
-        let parts : Vec<&str> = unwrapped.as_slice().splitn(2, ':').collect();
+        let parts : Vec<&str> = unwrapped[..].splitn(2, ':').collect();
         if parts.len() == 2 {
             let key = parts[0].trim();
             let value = parts[1].trim();
             match key {
                 "Name" => name = Some(value.to_string()),
-                "Pid" => pid = from_str(value),
-                "PPid" => ppid = from_str(value),
+                "Pid" => pid = value.parse().ok(),
+                "PPid" => ppid = value.parse().ok(),
                 _ => (),
             }
         }
@@ -96,7 +100,7 @@ fn get_process_records() -> Vec<ProcessRecord> {
 
     // find potential process directories under /proc
     let proc_directory_contents = match fs::readdir(&proc_directory) {
-        Err(why) => fail!("{}", why.desc),
+        Err(why) => panic!("{}", why.desc),
         Ok(res) => res
     };
 
@@ -104,7 +108,9 @@ fn get_process_records() -> Vec<ProcessRecord> {
         let status_path = entry.join("status");
         if status_path.exists() {
             match get_process_record(&status_path) {
-                Some(record) => records.push(record),
+                Some(record) => {
+                    records.push(record)
+                },
                 None => (),
             }
         }
@@ -115,18 +121,26 @@ fn get_process_records() -> Vec<ProcessRecord> {
 fn populate_node(node : &mut ProcessTreeNode, records: &Vec<ProcessRecord>) {
     // populate the node by finding its children... recursively
     let pid = node.record.pid; // avoid binding node as immutable in closure
-    for record in records.iter().filter(|record| record.ppid == pid) {
-        let mut child = ProcessTreeNode::new(record);
-        populate_node(&mut child, records);
-        node.children.push(child);
-    }
+    node.children.extend(
+        records.iter()
+            .filter(|record| record.ppid == pid)
+            .map(|record| {
+                let mut child = ProcessTreeNode::new(record);
+                populate_node(&mut child, records);
+                child
+            })
+    );
 }
 
 fn build_process_tree() -> ProcessTree {
     let records = get_process_records();
     let mut tree = ProcessTree {
         root : ProcessTreeNode::new(
-            &ProcessRecord { name: "/".to_string(), pid: 0, ppid: -1 })
+            &ProcessRecord {
+                name: "/".to_string(),
+                pid: 0,
+                ppid: -1
+            })
     };
 
     // recursively populate all nodes in the tree starting from root (pid 0)
@@ -137,10 +151,10 @@ fn build_process_tree() -> ProcessTree {
     tree
 }
 
-fn print_node(node : &ProcessTreeNode, indent_level : int) {
+fn print_node(node : &ProcessTreeNode, indent_level : i32) {
     // print indentation
-    for _ in range(0, indent_level * 2) {
-        print!(" ");
+    for _ in (0..indent_level) {
+        print!("  ");
     }
     println!("- {} #{}", node.record.name, node.record.pid);
     for child in node.children.iter() {
