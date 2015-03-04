@@ -39,8 +39,8 @@ use std::old_io::BufferedReader;
 #[derive(Clone,Debug)]
 struct ProcessRecord {
     name: String,
-    pid: isize,
-    ppid: isize,
+    pid: i32,
+    ppid: i32,
 }
 
 #[derive(Clone,Debug)]
@@ -65,8 +65,8 @@ impl ProcessTreeNode {
 // Given a status file path, return a hashmap with the following form:
 // pid -> ProcessRecord
 fn get_process_record(status_path: &Path) -> Option<ProcessRecord> {
-    let mut pid : Option<isize> = None;
-    let mut ppid : Option<isize> = None;
+    let mut pid : Option<i32> = None;
+    let mut ppid : Option<i32> = None;
     let mut name : Option<String> = None;
 
     let mut status_file = BufferedReader::new(File::open(status_path));
@@ -95,41 +95,35 @@ fn get_process_record(status_path: &Path) -> Option<ProcessRecord> {
 
 // build a simple struct (ProcessRecord) for each process
 fn get_process_records() -> Vec<ProcessRecord> {
-    let mut records : Vec<ProcessRecord> = Vec::new();
     let proc_directory = Path::new("/proc");
 
     // find potential process directories under /proc
-    let proc_directory_contents = match fs::readdir(&proc_directory) {
-        Err(why) => panic!("{}", why.desc),
-        Ok(res) => res
-    };
-
-    for entry in proc_directory_contents.iter().filter(|entry| entry.is_dir()) {
-        let status_path = entry.join("status");
-        if status_path.exists() {
-            match get_process_record(&status_path) {
-                Some(record) => {
-                    records.push(record)
-                },
-                None => (),
+    let proc_directory_contents = fs::readdir(&proc_directory).unwrap();
+    proc_directory_contents.iter().filter_map(|entry| {
+        if entry.is_dir() {
+            let status_path = entry.join("status");
+            if status_path.exists() {
+                return get_process_record(&status_path)
             }
         }
-    }
-    records
+        None
+    }).collect()
 }
 
 fn populate_node(node : &mut ProcessTreeNode, records: &Vec<ProcessRecord>) {
     // populate the node by finding its children... recursively
     let pid = node.record.pid; // avoid binding node as immutable in closure
     node.children.extend(
-        records.iter()
-            .filter(|record| record.ppid == pid)
-            .map(|record| {
+        records.iter().filter_map(|record| {
+            if record.ppid == pid {
                 let mut child = ProcessTreeNode::new(record);
                 populate_node(&mut child, records);
-                child
-            })
-    );
+                Some(child)
+            } else {
+                None
+            }
+        })
+    )
 }
 
 fn build_process_tree() -> ProcessTree {
