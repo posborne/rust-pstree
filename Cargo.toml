@@ -1,0 +1,9 @@
+[package]
+name = "pstree"
+version = "0.2.0"
+authors = ["Paul Osborne <osbpau@gmail.com>"]
+
+[[bin]]
+
+name = "pstree"
+path = "pstree.rs"

@@ -4,3 +4,7 @@
 
 # Binaries
 pstree
+
+# Cargo
+target/
+Cargo.lock

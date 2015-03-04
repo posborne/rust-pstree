@@ -15,13 +15,11 @@ is not intended to replace it.
 Build and Run It
 -----------------
 
-You will need to install the latest version of rust.  When I
-originally wrote this code, v0.12 of Rust had just recently been
-released.
+You will need to install the latest version of rust.  This has been tested
+with the latest nightlies as of March 3, 2015 (1.0.0 alpha).
 
-    $ rustc pstree.rs
-    $ ./pstree
-
+    $ cargo build
+    $ ./target/pstree
 
 Notes From Implementing
 -----------------------
