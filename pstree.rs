@@ -29,12 +29,14 @@
 
 #![feature(old_io)]
 #![feature(old_path)]
+#![feature(std_misc)] // hash_map::Entry
 
 use std::old_io::fs::PathExtensions;
 use std::old_io::fs;
 use std::old_io::File;
 use std::old_io::BufferedReader;
-
+use std::collections::hash_map::Entry::{Occupied, Vacant};
+use std::collections::HashMap;
 
 #[derive(Clone,Debug)]
 struct ProcessRecord {
@@ -110,20 +112,40 @@ fn get_process_records() -> Vec<ProcessRecord> {
     }).collect()
 }
 
-fn populate_node(node : &mut ProcessTreeNode, records: &Vec<ProcessRecord>) {
-    // populate the node by finding its children... recursively
+fn populate_node_helper(node: &mut ProcessTreeNode, pid_map: &HashMap<i32, &ProcessRecord>, ppid_map: &HashMap<i32, Vec<i32>>) {
     let pid = node.record.pid; // avoid binding node as immutable in closure
-    node.children.extend(
-        records.iter().filter_map(|record| {
-            if record.ppid == pid {
+    let child_nodes = &mut node.children;
+    match ppid_map.get(&pid) {
+        Some(children) => {
+            child_nodes.extend(children.iter().map(|child_pid| {
+                let record = pid_map[*child_pid];
                 let mut child = ProcessTreeNode::new(record);
-                populate_node(&mut child, records);
-                Some(child)
-            } else {
-                None
-            }
-        })
-    )
+                populate_node_helper(&mut child, pid_map, ppid_map);
+                child
+            }));
+        },
+        None => {},
+    }
+}
+
+fn populate_node(node : &mut ProcessTreeNode, records: &Vec<ProcessRecord>) {
+    // O(n): build a mapping of pids to vectors of children.  That is, each
+    // key is a pid and its value is a vector of the whose parent pid is the key
+    let mut ppid_map : HashMap<i32, Vec<i32>> = HashMap::new();
+    let mut pid_map : HashMap<i32, &ProcessRecord> = HashMap::new();
+    for record in records.iter() {
+        // entry returns either a vacant or occupied entry.  If vacant,
+        // we insert a new vector with this records pid.  If occupied,
+        // we push this record's pid onto the vec
+        pid_map.insert(record.pid, record);
+        match ppid_map.entry(record.ppid) {
+            Vacant(entry) => { entry.insert(vec![record.pid]); },
+            Occupied(mut entry) => { entry.get_mut().push(record.pid); },
+        };
+    }
+
+    // With the data structures built, it is off to the races
+    populate_node_helper(node, &pid_map, &ppid_map);
 }
 
 fn build_process_tree() -> ProcessTree {
