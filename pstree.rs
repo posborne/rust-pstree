@@ -27,14 +27,15 @@
 // of different items, notably the process name and its parent process id (ppid).
 // And with that information, we can build the process tree.
 
-#![feature(old_io)]
-#![feature(old_path)]
 #![feature(std_misc)] // hash_map::Entry
+#![feature(path)]
+#![feature(fs)]
+#![feature(io)]
 
-use std::old_io::fs::PathExtensions;
-use std::old_io::fs;
-use std::old_io::File;
-use std::old_io::BufferedReader;
+use std::path::Path;
+use std::fs;
+use std::io::prelude::*;
+use std::fs::File;
 use std::collections::hash_map::Entry::{Occupied, Vacant};
 use std::collections::HashMap;
 
@@ -71,22 +72,29 @@ fn get_process_record(status_path: &Path) -> Option<ProcessRecord> {
     let mut ppid : Option<i32> = None;
     let mut name : Option<String> = None;
 
-    let mut status_file = BufferedReader::new(File::open(status_path));
-    for line in status_file.lines() {
-        let unwrapped = line.unwrap(); // need a new lifeline
-        let parts : Vec<&str> = unwrapped[..].splitn(2, ':').collect();
-        if parts.len() == 2 {
-            let key = parts[0].trim();
-            let value = parts[1].trim();
-            match key {
-                "Name" => name = Some(value.to_string()),
-                "Pid" => pid = value.parse().ok(),
-                "PPid" => ppid = value.parse().ok(),
-                _ => (),
-            }
+    let mut reader = std::io::BufReader::new(File::open(status_path).unwrap());
+    loop {
+        let mut linebuf = String::new();
+        match reader.read_line(&mut linebuf) {
+            Ok(_) => {
+                if linebuf.is_empty() {
+                    break;
+                }
+                let parts : Vec<&str> = linebuf[..].splitn(2, ':').collect();
+                if parts.len() == 2 {
+                    let key = parts[0].trim();
+                    let value = parts[1].trim();
+                    match key {
+                        "Name" => name = Some(value.to_string()),
+                        "Pid" => pid = value.parse().ok(),
+                        "PPid" => ppid = value.parse().ok(),
+                        _ => (),
+                    }
+                }
+            },
+            Err(_) => break,
         }
     }
-
     return if pid.is_some() && ppid.is_some() && name.is_some() {
         Some(ProcessRecord { name: name.unwrap(), pid: pid.unwrap(), ppid: ppid.unwrap() })
     } else {
@@ -100,10 +108,11 @@ fn get_process_records() -> Vec<ProcessRecord> {
     let proc_directory = Path::new("/proc");
 
     // find potential process directories under /proc
-    let proc_directory_contents = fs::readdir(&proc_directory).unwrap();
-    proc_directory_contents.iter().filter_map(|entry| {
-        if entry.is_dir() {
-            let status_path = entry.join("status");
+    let proc_directory_contents = fs::read_dir(&proc_directory).unwrap();
+    proc_directory_contents.filter_map(|entry| {
+        let entry_path = entry.unwrap().path();
+        if entry_path.is_dir() {
+            let status_path = entry_path.join("status");
             if status_path.exists() {
                 return get_process_record(&status_path)
             }
