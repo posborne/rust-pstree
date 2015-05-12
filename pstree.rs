@@ -27,10 +27,7 @@
 // of different items, notably the process name and its parent process id (ppid).
 // And with that information, we can build the process tree.
 
-#![feature(std_misc)] // hash_map::Entry
-#![feature(path)]
-#![feature(fs)]
-#![feature(io)]
+#![feature(path_ext)]
 
 use std::path::Path;
 use std::fs;
@@ -127,7 +124,7 @@ fn populate_node_helper(node: &mut ProcessTreeNode, pid_map: &HashMap<i32, &Proc
     match ppid_map.get(&pid) {
         Some(children) => {
             child_nodes.extend(children.iter().map(|child_pid| {
-                let record = pid_map[*child_pid];
+                let record = pid_map[child_pid];
                 let mut child = ProcessTreeNode::new(record);
                 populate_node_helper(&mut child, pid_map, ppid_map);
                 child
