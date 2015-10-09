@@ -27,8 +27,6 @@
 // of different items, notably the process name and its parent process id (ppid).
 // And with that information, we can build the process tree.
 
-#![feature(path_ext)]
-
 use std::path::Path;
 use std::fs;
 use std::io::prelude::*;
@@ -108,10 +106,10 @@ fn get_process_records() -> Vec<ProcessRecord> {
     let proc_directory_contents = fs::read_dir(&proc_directory).unwrap();
     proc_directory_contents.filter_map(|entry| {
         let entry_path = entry.unwrap().path();
-        if entry_path.is_dir() {
+        if fs::metadata(entry_path.as_path()).unwrap().is_dir() {
             let status_path = entry_path.join("status");
-            if status_path.exists() {
-                return get_process_record(&status_path)
+            if fs::metadata(status_path.as_path()).unwrap().is_file() {
+                return get_process_record(status_path.as_path())
             }
         }
         None
