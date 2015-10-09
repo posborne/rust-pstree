@@ -1,6 +1,8 @@
 pstree in Rust
 ==============
 
+[![Build Status](https://travis-ci.org/posborne/rust-pstree.svg?branch=master)](https://travis-ci.org/posborne/rust-pstree)
+
 This repository contains a simple implementation of the Unix pstree
 program in Rust.  This is mostly done as a learning exercise and port
 of a [C implementation I
