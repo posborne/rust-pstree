@@ -108,8 +108,10 @@ fn get_process_records() -> Vec<ProcessRecord> {
         let entry_path = entry.unwrap().path();
         if fs::metadata(entry_path.as_path()).unwrap().is_dir() {
             let status_path = entry_path.join("status");
-            if fs::metadata(status_path.as_path()).unwrap().is_file() {
-                return get_process_record(status_path.as_path())
+            if let Ok(metadata) = fs::metadata(status_path.as_path()) {
+                if metadata.is_file() {
+                    return get_process_record(status_path.as_path());
+                }
             }
         }
         None
