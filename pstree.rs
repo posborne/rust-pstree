@@ -175,7 +175,7 @@ fn build_process_tree() -> ProcessTree {
 
 fn print_node(node : &ProcessTreeNode, indent_level : i32) {
     // print indentation
-    for _ in (0..indent_level) {
+    for _ in 0..indent_level {
         print!("  ");
     }
     println!("- {} #{}", node.record.name, node.record.pid);
